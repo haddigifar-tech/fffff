@@ -1,0 +1,344 @@
+Tentu, saya mengerti. Anda ingin mengubah aplikasi ini dari menggunakan penyimpanan lokal menjadi menggunakan Supabase sebagai backend database, dan Anda menginginkan prompt yang bisa Anda berikan kepada AI untuk melakukan perubahan tersebut secara lengkap.
+Berikut adalah prompt komprehensif yang telah saya siapkan. Anda dapat menyalin dan menempelkan seluruh teks di bawah ini sebagai permintaan Anda berikutnya kepada AI.
+Prompt untuk Migrasi Aplikasi ke Supabase
+Halo, saya ingin Anda bertindak sebagai seorang senior frontend engineer ahli Supabase. Tugas Anda adalah memigrasikan aplikasi React yang ada saat ini dari menggunakan localStorage dan data statis (mock data) menjadi aplikasi yang sepenuhnya terintegrasi dengan Supabase untuk backend, database, dan otentikasi.
+Aplikasi ini harus melakukan semua operasi CRUD (Create, Read, Update, Delete) langsung ke database Supabase secara dinamis.
+Berikut adalah panduan lengkap untuk melakukan migrasi ini:
+Langkah 1: Skema Database SQL
+Pertama, buatlah skema database SQL yang lengkap untuk Supabase. Skema ini harus mencakup semua tabel yang diperlukan, relasi (foreign key), tipe data yang sesuai (jsonb untuk array objek, text[] untuk array string, timestamptz untuk tanggal), dan RLS (Row-Level Security) untuk memastikan pengguna hanya dapat mengakses data mereka sendiri.
+Gunakan skema SQL berikut:
+code
+SQL
+-- Create ENUM types for status fields to ensure data integrity
+CREATE TYPE client_status AS ENUM ('Prospek', 'Aktif', 'Tidak Aktif', 'Hilang');
+CREATE TYPE client_type AS ENUM ('Langsung', 'Vendor');
+CREATE TYPE lead_status AS ENUM ('Sedang Diskusi', 'Menunggu Follow Up', 'Dikonversi', 'Ditolak');
+CREATE TYPE contact_channel AS ENUM ('WhatsApp', 'Instagram', 'Website', 'Telepon', 'Referensi', 'Form Saran', 'Lainnya');
+CREATE TYPE card_type AS ENUM ('Prabayar', 'Kredit', 'Debit', 'Tunai');
+CREATE TYPE asset_status AS ENUM ('Tersedia', 'Digunakan', 'Perbaikan');
+CREATE TYPE performance_note_type AS ENUM ('Pujian', 'Perhatian', 'Keterlambatan Deadline', 'Umum');
+CREATE TYPE satisfaction_level AS ENUM ('Sangat Puas', 'Puas', 'Biasa Saja', 'Tidak Puas');
+CREATE TYPE revision_status AS ENUM ('Menunggu Revisi', 'Sedang Dikerjakan', 'Revisi Selesai');
+CREATE TYPE post_type AS ENUM ('Instagram Feed', 'Instagram Story', 'Instagram Reels', 'TikTok Video', 'Artikel Blog');
+CREATE TYPE post_status AS ENUM ('Draf', 'Terjadwal', 'Diposting', 'Dibatalkan');
+CREATE TYPE booking_status AS ENUM ('Baru', 'Terkonfirmasi', 'Ditolak');
+CREATE TYPE payment_status AS ENUM ('Lunas', 'DP Terbayar', 'Belum Bayar');
+CREATE TYPE transaction_type AS ENUM ('Pemasukan', 'Pengeluaran');
+CREATE TYPE pocket_type AS ENUM ('Nabung & Bayar', 'Terkunci', 'Bersama', 'Anggaran Pengeluaran', 'Tabungan Hadiah Freelancer');
+CREATE TYPE discount_type AS ENUM ('percentage', 'fixed');
+
+-- Table for User Profiles (linked to Supabase Auth users)
+CREATE TABLE profiles (
+    id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+    full_name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    company_name TEXT,
+    website TEXT,
+    address TEXT,
+    bank_account TEXT,
+    authorized_signer TEXT,
+    id_number TEXT,
+    bio TEXT,
+    income_categories TEXT[],
+    expense_categories TEXT[],
+    project_types TEXT[],
+    event_types TEXT[],
+    asset_categories TEXT[],
+    sop_categories TEXT[],
+    package_categories TEXT[],
+    project_status_config JSONB,
+    notification_settings JSONB,
+    security_settings JSONB,
+    briefing_template TEXT,
+    terms_and_conditions TEXT,
+    contract_template TEXT,
+    logo_base64 TEXT,
+    brand_color TEXT,
+    public_page_config JSONB,
+    package_share_template TEXT,
+    booking_form_template TEXT,
+    chat_templates JSONB
+);
+ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can only see their own profile." ON profiles FOR SELECT USING (auth.uid() = id);
+CREATE POLICY "Users can insert their own profile." ON profiles FOR INSERT WITH CHECK (auth.uid() = id);
+CREATE POLICY "Users can update their own profile." ON profiles FOR UPDATE USING (auth.uid() = id);
+
+-- Table for Clients
+CREATE TABLE clients (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    name TEXT NOT NULL,
+    email TEXT,
+    phone TEXT,
+    whatsapp TEXT,
+    since TIMESTAMPTZ,
+    instagram TEXT,
+    status client_status,
+    client_type client_type,
+    last_contact TIMESTAMPTZ,
+    portal_access_id TEXT UNIQUE
+);
+ALTER TABLE clients ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own clients." ON clients FOR ALL USING (auth.uid() = user_id);
+
+-- Table for Leads
+CREATE TABLE leads (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    name TEXT,
+    contact_channel contact_channel,
+    location TEXT,
+    status lead_status,
+    date TIMESTAMPTZ,
+    notes TEXT,
+    whatsapp TEXT
+);
+ALTER TABLE leads ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own leads." ON leads FOR ALL USING (auth.uid() = user_id);
+
+-- Table for Packages
+CREATE TABLE packages (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    name TEXT,
+    price NUMERIC,
+    category TEXT,
+    physical_items JSONB,
+    digital_items TEXT[],
+    processing_time TEXT,
+    default_printing_cost NUMERIC,
+    default_transport_cost NUMERIC,
+    photographers TEXT,
+    videographers TEXT,
+    cover_image TEXT
+);
+ALTER TABLE packages ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own packages." ON packages FOR ALL USING (auth.uid() = user_id);
+
+-- Table for AddOns
+CREATE TABLE add_ons (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    name TEXT,
+    price NUMERIC
+);
+ALTER TABLE add_ons ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own add_ons." ON add_ons FOR ALL USING (auth.uid() = user_id);
+
+-- Table for Team Members (Freelancers)
+CREATE TABLE team_members (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    name TEXT,
+    role TEXT,
+    email TEXT,
+    phone TEXT,
+    standard_fee NUMERIC,
+    no_rek TEXT,
+    reward_balance NUMERIC,
+    rating REAL,
+    performance_notes JSONB,
+    portal_access_id TEXT UNIQUE
+);
+ALTER TABLE team_members ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own team_members." ON team_members FOR ALL USING (auth.uid() = user_id);
+
+-- Table for Projects
+CREATE TABLE projects (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    project_name TEXT,
+    client_name TEXT,
+    client_id TEXT REFERENCES clients(id) ON DELETE SET NULL,
+    project_type TEXT,
+    package_name TEXT,
+    package_id TEXT REFERENCES packages(id) ON DELETE SET NULL,
+    add_ons JSONB,
+    date TIMESTAMPTZ,
+    deadline_date TIMESTAMPTZ,
+    location TEXT,
+    progress INT,
+    status TEXT,
+    active_sub_statuses TEXT[],
+    total_cost NUMERIC,
+    amount_paid NUMERIC,
+    payment_status payment_status,
+    team JSONB,
+    notes TEXT,
+    accommodation TEXT,
+    drive_link TEXT,
+    client_drive_link TEXT,
+    final_drive_link TEXT,
+    start_time TEXT,
+    end_time TEXT,
+    image TEXT,
+    revisions JSONB,
+    promo_code_id TEXT,
+    discount_amount NUMERIC,
+    shipping_details TEXT,
+    dp_proof_url TEXT,
+    printing_details JSONB,
+    printing_cost NUMERIC,
+    transport_cost NUMERIC,
+    is_editing_confirmed_by_client BOOLEAN,
+    is_printing_confirmed_by_client BOOLEAN,
+    is_delivery_confirmed_by_client BOOLEAN,
+    confirmed_sub_statuses TEXT[],
+    client_sub_status_notes JSONB,
+    sub_status_confirmation_sent_at JSONB,
+    completed_digital_items TEXT[],
+    invoice_signature TEXT,
+    custom_sub_statuses JSONB,
+    booking_status booking_status,
+    rejection_reason TEXT,
+    chat_history JSONB
+);
+ALTER TABLE projects ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own projects." ON projects FOR ALL USING (auth.uid() = user_id);
+
+-- Table for Transactions
+CREATE TABLE transactions (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    date TIMESTAMPTZ,
+    description TEXT,
+    amount NUMERIC,
+    type transaction_type,
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    category TEXT,
+    method TEXT,
+    pocket_id TEXT,
+    card_id TEXT,
+    printing_item_id TEXT,
+    vendor_signature TEXT
+);
+ALTER TABLE transactions ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own transactions." ON transactions FOR ALL USING (auth.uid() = user_id);
+
+-- Table for Cards
+CREATE TABLE cards (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    card_holder_name TEXT,
+    bank_name TEXT,
+    card_type card_type,
+    last_four_digits TEXT,
+    expiry_date TEXT,
+    balance NUMERIC,
+    color_gradient TEXT
+);
+ALTER TABLE cards ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own cards." ON cards FOR ALL USING (auth.uid() = user_id);
+
+-- Table for Financial Pockets
+CREATE TABLE financial_pockets (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    name TEXT,
+    description TEXT,
+    icon TEXT,
+    type pocket_type,
+    amount NUMERIC,
+    goal_amount NUMERIC,
+    lock_end_date TIMESTAMPTZ,
+    members JSONB,
+    source_card_id TEXT
+);
+ALTER TABLE financial_pockets ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own financial_pockets." ON financial_pockets FOR ALL USING (auth.uid() = user_id);
+
+-- Table for Promo Codes
+CREATE TABLE promo_codes (
+    id TEXT PRIMARY KEY,
+    user_id UUID NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    code TEXT,
+    discount_type discount_type,
+    discount_value NUMERIC,
+    is_active BOOLEAN,
+    usage_count INT,
+    max_usage INT,
+    expiry_date TIMESTAMPTZ,
+    created_at TIMESTAMPTZ
+);
+ALTER TABLE promo_codes ENABLE ROW LEVEL SECURITY;
+CREATE POLICY "Users can manage their own promo_codes." ON promo_codes FOR ALL USING (auth.uid() = user_id);
+
+-- ... (Tambahkan tabel lain jika diperlukan, seperti SOP, Assets, Contracts, dll. dengan pola yang sama) ...
+Langkah 2: Refaktor Kode Aplikasi
+Sekarang, modifikasi kode frontend untuk berinteraksi dengan Supabase.
+A. Setup Klien Supabase
+Buat file baru supabaseClient.ts untuk menginisialisasi klien Supabase. Asumsikan variabel environment SUPABASE_URL dan SUPABASE_ANON_KEY tersedia.
+code
+TypeScript
+// supabaseClient.ts
+import { createClient } from '@supabase/supabase-js';
+
+const supabaseUrl = process.env.SUPABASE_URL!;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY!;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+B. Modifikasi App.tsx
+Refaktor App.tsx secara ekstensif:
+Hapus usePersistentState: Ganti semua usePersistentState dengan useState biasa. Data tidak akan lagi disimpan di localStorage.
+Manajemen Otentikasi:
+Hapus MOCK_USERS dan logika login manual.
+Gunakan supabase.auth.onAuthStateChange untuk memantau status login pengguna dan mengatur state currentUser.
+Ubah komponen Login untuk menggunakan supabase.auth.signInWithPassword.
+Ubah fungsi handleLogout untuk memanggil supabase.auth.signOut.
+Pengambilan Data (Fetch Data):
+Buat fungsi async di dalam App.tsx bernama fetchData. Fungsi ini harus mengambil semua data (clients, projects, transactions, dll.) dari tabel Supabase yang sesuai. Gunakan select('*').
+Panggil fetchData di dalam useEffect yang dijalankan ketika currentUser berubah (setelah login berhasil).
+Operasi CRUD:
+Ganti semua fungsi setSomething (misalnya setClients, setProjects) dengan fungsi async baru yang berinteraksi dengan Supabase.
+Contoh (Menambah Klien & Proyek): Fungsi handleFormSubmit di Clients.tsx yang sebelumnya memanggil setClients dan setProjects harus diubah menjadi:
+code
+TypeScript
+const handleFormSubmit = async (e: React.FormEvent) => {
+    // ... (logika form seperti sebelumnya)
+
+    // Insert new client
+    const { error: clientError } = await supabase.from('clients').insert([newClient]);
+    if (clientError) {
+        showNotification(`Error: ${clientError.message}`);
+        return;
+    }
+
+    // Insert new project
+    const { error: projectError } = await supabase.from('projects').insert([newProject]);
+    if (projectError) {
+        showNotification(`Error: ${projectError.message}`);
+        return;
+    }
+
+    // ... (logika insert transaction jika ada DP)
+
+    showNotification('Klien dan proyek baru berhasil ditambahkan.');
+    // Refetch data untuk memperbarui UI
+    fetchData(); 
+    handleCloseModal();
+};
+Terapkan pola yang sama untuk semua operasi Create, Update, dan Delete di seluruh aplikasi. Setiap operasi yang berhasil harus diikuti dengan pemanggilan ulang fetchData() untuk menyinkronkan state aplikasi dengan database.
+C. Hapus Data Statis
+Hapus file constants.tsx karena semua mock data akan berada di database. Ikon dan konstanta lain yang masih relevan dapat dipindahkan ke file utilitas baru.
+Langkah 3: Mock Data SQL
+Gunakan data SQL INSERT berikut di Supabase SQL Editor untuk mengisi database Anda dengan data awal yang konsisten dengan aplikasi sebelumnya. Pastikan untuk mengganti uuid-pengguna-admin dengan ID pengguna Supabase Auth Anda setelah Anda mendaftar.
+code
+SQL
+-- Ganti 'uuid-pengguna-admin' dengan ID pengguna dari auth.users Anda
+-- Anda bisa mendapatkannya setelah mendaftar dan login
+INSERT INTO profiles (id, full_name, company_name, ...) VALUES 
+('uuid-pengguna-admin', 'Andi Vena', 'Vena Pictures', ...);
+
+-- Sisipkan data untuk tabel lain, pastikan 'user_id' diisi dengan benar
+INSERT INTO clients (id, user_id, name, status, ...) VALUES
+('CLI001', 'uuid-pengguna-admin', 'Budi & Sinta', 'Aktif', ...);
+
+INSERT INTO packages (id, user_id, name, price, ...) VALUES
+('PKG001', 'uuid-pengguna-admin', 'Paket Pernikahan Silver', 12000000, ...);
+
+INSERT INTO projects (id, user_id, project_name, client_id, package_id, ...) VALUES
+('PRJ001', 'uuid-pengguna-admin', 'Pernikahan Budi & Sinta', 'CLI001', 'PKG001', ...);
+
+-- ... (Lanjutkan untuk semua data mock lainnya dari constants.tsx) ...
