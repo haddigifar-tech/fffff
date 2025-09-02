@@ -23,7 +23,7 @@
 -- To get your user ID, run: SELECT id FROM auth.users;
 DO $$
 DECLARE
-    sample_user_id UUID := 'b27182c1-5487-4d8c-8cdf-526825d50426'; -- Replace with your actual user ID
+    sample_user_id UUID := 'ac29a74e-1efc-4953-a599-fc08e842e0c7'; -- Replace with your actual user ID
 BEGIN
 
 -- Insert sample profile with admin role and complete configuration
